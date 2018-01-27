@@ -99,7 +99,7 @@ func main() {
 
 	// If modifying these scopes, delete your previously saved credentials
 	// at ~/.credentials/sheets.googleapis.com-go-quickstart.json
-	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets.readonly")
+	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets")
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
 	}
@@ -112,21 +112,56 @@ func main() {
 
 	// Prints the names and majors of students in a sample spreadsheet:
 	// https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
-	spreadsheetId := "1LjRVpny-Z6HbeUW6rK1X1l5JzqBpDgiEZhpnWsB-aKQ"
-	readRange := "Class Data!A1:A3"
+	spreadsheetId := "1MXffgKv3Tk80k5NRs1DlfEjTBrcdgYdKQxKx7zrajaI"
+	readRange := "Movie List!A1:A"
 	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve data from sheet. %v", err)
 	}
-
+	fmt.Println(len(resp.Values))
+	fmt.Println(resp.Values)
 	if len(resp.Values) > 0 {
 		fmt.Println("Name, Major:")
-		for _, row := range resp.Values {
-			// Print columns A and E, which correspond to indices 0 and 4.
-			fmt.Printf("%s, %s\n", row[0], row[4])
-		}
+		// for _, row := range resp.Values {
+		// 	// Print columns A and E, which correspond to indices 0 and 4.
+		// 	fmt.Printf("%s, %s\n", row[0], row[4])
+		// }
 	} else {
 		fmt.Print("No data found.")
 	}
+	AppendToSpreadSheet(srv, ctx)
+}
 
+func AppendToSpreadSheet(sheetsService *sheets.Service, ctx context.Context) {
+	// The ID of the spreadsheet to update.
+	spreadsheetId := "1MXffgKv3Tk80k5NRs1DlfEjTBrcdgYdKQxKx7zrajaI" // TODO: Update placeholder value.
+
+	// The A1 notation of a range to search for a logical table of data.
+	// Values will be appended after the last row of the table.
+	range2 := "A5:A5" // TODO: Update placeholder value.
+
+	// How the input data should be interpreted.
+	valueInputOption := "USER_ENTERED" // TODO: Update placeholder value.
+
+	// How the input data should be inserted.
+	insertDataOption := "OVERWRITE" // TODO: Update placeholder value.
+
+	test := [][]interface{}{}
+	// t := []string{"hello"}
+	test = append(test, []interface{}{"hello"})
+	fmt.Println(test)
+	rb := &sheets.ValueRange{
+		// TODO: Add desired fields of the request body.
+		MajorDimension: "COLUMNS",
+		Range:          "A5:A5",
+		Values:         test,
+	}
+
+	resp, err := sheetsService.Spreadsheets.Values.Append(spreadsheetId, range2, rb).ValueInputOption(valueInputOption).InsertDataOption(insertDataOption).Context(ctx).Do()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// TODO: Change code below to process the `resp` object:
+	fmt.Printf("%#v\n", resp)
 }
