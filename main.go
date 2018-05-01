@@ -15,7 +15,15 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/sheets/v4"
+	"github.com/ghodss/yaml"
 )
+
+const ConfigFileName = "config.yaml"
+
+// Config contains config of spreadsheet
+type Config struct {
+	spreadsheetID string
+}
 
 // getClient uses a Context and Config to retrieve a Token
 // then generate a Client. It returns the generated Client.
@@ -58,6 +66,7 @@ func tokenCacheFile() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	fmt.Println("Hello World-------", usr)
 	tokenCacheDir := filepath.Join(usr.HomeDir, ".credentials")
 	os.MkdirAll(tokenCacheDir, 0700)
 	return filepath.Join(tokenCacheDir,
@@ -92,7 +101,7 @@ func saveToken(file string, token *oauth2.Token) {
 func main() {
 	ctx := context.Background()
 
-	b, err := ioutil.ReadFile("/home/hanifa/Hanifa/credentials/google-spreadsheet/client_secret.json")
+	b, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "Hanifa/credentials/google-spreadsheet/client_secret.json"))
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
@@ -112,8 +121,8 @@ func main() {
 
 	// Prints the names and majors of students in a sample spreadsheet:
 	// https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
-	spreadsheetId := "1MXffgKv3Tk80k5NRs1DlfEjTBrcdgYdKQxKx7zrajaI"
-	readRange := "Movie List!A1:A"
+	spreadsheetId := "1QIHDgPfHi8vkuL3BarEp02l5k2jCQuvKkJD4nt6PpW8"
+	readRange := "h1!A1:A"
 	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve data from sheet. %v", err)
@@ -129,16 +138,27 @@ func main() {
 	} else {
 		fmt.Print("No data found.")
 	}
-	AppendToSpreadSheet(srv, ctx)
+	AppendToSpreadSheet(ctx, srv)
 }
 
-func AppendToSpreadSheet(sheetsService *sheets.Service, ctx context.Context) {
+// AppendToSpreadSheet appends to spreadsheet.
+func AppendToSpreadSheet(ctx context.Context, sheetsService *sheets.Service) {
+	path := filepath.Join(os.Getwd(), ConfigFileName)
+	f, err := ioutil.ReadFile(path)
+	if err != nil {
+		panic(err)
+	}
+	cfg := &Config{}
+	err = yaml.Unmarshal(f, cfg)
+	if err  != nil {
+		panic(err)
+	}
 	// The ID of the spreadsheet to update.
-	spreadsheetId := "1MXffgKv3Tk80k5NRs1DlfEjTBrcdgYdKQxKx7zrajaI" // TODO: Update placeholder value.
+	spreadsheetId :=  // TODO: Update placeholder value.
 
 	// The A1 notation of a range to search for a logical table of data.
 	// Values will be appended after the last row of the table.
-	range2 := "A5:A5" // TODO: Update placeholder value.
+	range2 := "A5:B5" // TODO: Update placeholder value.
 
 	// How the input data should be interpreted.
 	valueInputOption := "USER_ENTERED" // TODO: Update placeholder value.
@@ -147,13 +167,12 @@ func AppendToSpreadSheet(sheetsService *sheets.Service, ctx context.Context) {
 	insertDataOption := "OVERWRITE" // TODO: Update placeholder value.
 
 	test := [][]interface{}{}
-	// t := []string{"hello"}
-	test = append(test, []interface{}{"hello"})
+	test = append(test, []interface{}{"hello", "Hello2"})
 	fmt.Println(test)
 	rb := &sheets.ValueRange{
 		// TODO: Add desired fields of the request body.
 		MajorDimension: "COLUMNS",
-		Range:          "A5:A5",
+		Range:          "A5:B5",
 		Values:         test,
 	}
 
