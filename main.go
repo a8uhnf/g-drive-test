@@ -11,18 +11,20 @@ import (
 	"os/user"
 	"path/filepath"
 
+	"github.com/ghodss/yaml"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/sheets/v4"
-	"github.com/ghodss/yaml"
 )
 
+// ConfigFileName is name of config file.
 const ConfigFileName = "config.yaml"
 
 // Config contains config of spreadsheet
 type Config struct {
-	spreadsheetID string
+	SpreadsheetID string `json:"spreadsheetID"`
+	SheetName     string `json:"sheetName"`
 }
 
 // getClient uses a Context and Config to retrieve a Token
@@ -98,6 +100,27 @@ func saveToken(file string, token *oauth2.Token) {
 	json.NewEncoder(f).Encode(token)
 }
 
+func getConfig() (*Config, error) {
+	p, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(p, ConfigFileName)
+	y, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(string(y))
+	cfg := &Config{}
+	err = yaml.Unmarshal(y, cfg)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(cfg.SpreadsheetID)
+	fmt.Println(cfg.SheetName)
+	return cfg, nil
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -119,10 +142,16 @@ func main() {
 		log.Fatalf("Unable to retrieve Sheets Client %v", err)
 	}
 
+	cfg, err := getConfig()
+	if err != nil {
+		panic(err)
+	}
 	// Prints the names and majors of students in a sample spreadsheet:
 	// https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
-	spreadsheetId := "1QIHDgPfHi8vkuL3BarEp02l5k2jCQuvKkJD4nt6PpW8"
-	readRange := "h1!A1:A"
+	fmt.Println(cfg.SpreadsheetID)
+	fmt.Println(cfg.SheetName)
+	spreadsheetId := cfg.SpreadsheetID
+	readRange := cfg.SheetName + "!A1:A"
 	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve data from sheet. %v", err)
@@ -138,23 +167,30 @@ func main() {
 	} else {
 		fmt.Print("No data found.")
 	}
-	AppendToSpreadSheet(ctx, srv)
-}
-
-// AppendToSpreadSheet appends to spreadsheet.
-func AppendToSpreadSheet(ctx context.Context, sheetsService *sheets.Service) {
-	path := filepath.Join(os.Getwd(), ConfigFileName)
-	f, err := ioutil.ReadFile(path)
+	err = AppendToSpreadSheet(ctx, srv)
 	if err != nil {
 		panic(err)
 	}
+}
+
+// AppendToSpreadSheet appends to spreadsheet.
+func AppendToSpreadSheet(ctx context.Context, sheetsService *sheets.Service) error {
+	p, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(p, ConfigFileName)
+	f, err := ioutil.ReadFile(path)
+	if err != nil {
+		return err
+	}
 	cfg := &Config{}
 	err = yaml.Unmarshal(f, cfg)
-	if err  != nil {
-		panic(err)
+	if err != nil {
+		return err
 	}
 	// The ID of the spreadsheet to update.
-	spreadsheetId :=  // TODO: Update placeholder value.
+	spreadsheetId := cfg.SpreadsheetID // TODO: Update placeholder value.
 
 	// The A1 notation of a range to search for a logical table of data.
 	// Values will be appended after the last row of the table.
@@ -178,9 +214,11 @@ func AppendToSpreadSheet(ctx context.Context, sheetsService *sheets.Service) {
 
 	resp, err := sheetsService.Spreadsheets.Values.Append(spreadsheetId, range2, rb).ValueInputOption(valueInputOption).InsertDataOption(insertDataOption).Context(ctx).Do()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// TODO: Change code below to process the `resp` object:
 	fmt.Printf("%#v\n", resp)
+
+	return nil
 }
