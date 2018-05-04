@@ -10,12 +10,24 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 
+	"github.com/fsnotify/fsnotify"
+	"github.com/ghodss/yaml"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/sheets/v4"
 )
+
+// ConfigFileName is name of config file.
+const ConfigFileName = "config.yaml"
+
+// Config contains config of spreadsheet
+type Config struct {
+	SpreadsheetID string `json:"spreadsheetID"`
+	SheetName     string `json:"sheetName"`
+}
 
 // getClient uses a Context and Config to retrieve a Token
 // then generate a Client. It returns the generated Client.
@@ -58,6 +70,7 @@ func tokenCacheFile() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	fmt.Println("Hello World-------", usr)
 	tokenCacheDir := filepath.Join(usr.HomeDir, ".credentials")
 	os.MkdirAll(tokenCacheDir, 0700)
 	return filepath.Join(tokenCacheDir,
@@ -89,14 +102,30 @@ func saveToken(file string, token *oauth2.Token) {
 	json.NewEncoder(f).Encode(token)
 }
 
+func getConfig() (*Config, error) {
+	p, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(p, ConfigFileName)
+	y, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg := &Config{}
+	err = yaml.Unmarshal(y, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 func main() {
 	ctx := context.Background()
-
-	b, err := ioutil.ReadFile("/home/hanifa/Hanifa/credentials/google-spreadsheet/client_secret.json")
+	b, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "credentials/google-spreadsheet/client_secret.json"))
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
-
 	// If modifying these scopes, delete your previously saved credentials
 	// at ~/.credentials/sheets.googleapis.com-go-quickstart.json
 	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets")
@@ -110,35 +139,94 @@ func main() {
 		log.Fatalf("Unable to retrieve Sheets Client %v", err)
 	}
 
+	cfg, err := getConfig()
+	if err != nil {
+		panic(err)
+	}
 	// Prints the names and majors of students in a sample spreadsheet:
 	// https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
-	spreadsheetId := "1MXffgKv3Tk80k5NRs1DlfEjTBrcdgYdKQxKx7zrajaI"
-	readRange := "Movie List!A1:A"
+	fmt.Println(cfg.SpreadsheetID)
+	fmt.Println(cfg.SheetName)
+	spreadsheetId := cfg.SpreadsheetID
+	readRange := cfg.SheetName + "!A1:A"
 	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve data from sheet. %v", err)
 	}
-	fmt.Println(len(resp.Values))
-	fmt.Println(resp.Values)
 	if len(resp.Values) > 0 {
 		fmt.Println("Name, Major:")
-		// for _, row := range resp.Values {
-		// 	// Print columns A and E, which correspond to indices 0 and 4.
-		// 	fmt.Printf("%s, %s\n", row[0], row[4])
-		// }
+		for _, row := range resp.Values {
+			// Print columns A and E, which correspond to indices 0 and 4.
+			// fmt.Printf("%s, %s\n", row[0])
+			if len(row) > 0 {
+				fmt.Println(row)
+			}
+		}
 	} else {
 		fmt.Print("No data found.")
 	}
-	AppendToSpreadSheet(srv, ctx)
+	/* err = AppendToSpreadSheet(ctx, srv)
+	if err != nil {
+		panic(err)
+	} */
+	err = DownloadWatcher()
+	if err != nil {
+		panic(err)
+	}
 }
 
-func AppendToSpreadSheet(sheetsService *sheets.Service, ctx context.Context) {
+// DownloadWatcher watches download folder.
+func DownloadWatcher() error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer watcher.Close()
+
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case event := <-watcher.Events:
+				fmt.Println("-------------------")
+				log.Println("event operations:- ", event.Op)
+				log.Println("filename:- ", event.Name)
+				/* if event.Op&fsnotify.Write == fsnotify.Write {
+
+				} */
+				if strings.HasSuffix(event.Name, ".torrent") && event.Op&fsnotify.Chmod == fsnotify.Chmod {
+					fmt.Println("Hello Find the files.....")
+				}
+
+			case err := <-watcher.Errors:
+				log.Println("error:", err)
+			}
+		}
+	}()
+	path := filepath.Join(os.Getenv("HOME"), "Downloads")
+	if _, ok := os.Stat(path); ok != nil {
+		return ok
+	}
+	err = watcher.Add(path)
+	if err != nil {
+		return err
+	}
+	<-done
+	return nil
+}
+
+// AppendToSpreadSheet appends to spreadsheet.
+func AppendToSpreadSheet(ctx context.Context, sheetsService *sheets.Service) error {
+	cfg, err := getConfig()
+	if err != nil {
+		return err
+	}
 	// The ID of the spreadsheet to update.
-	spreadsheetId := "1MXffgKv3Tk80k5NRs1DlfEjTBrcdgYdKQxKx7zrajaI" // TODO: Update placeholder value.
+	spreadsheetId := cfg.SpreadsheetID // TODO: Update placeholder value.
 
 	// The A1 notation of a range to search for a logical table of data.
 	// Values will be appended after the last row of the table.
-	range2 := "A5:A5" // TODO: Update placeholder value.
+	range2 := "A5:B5" // TODO: Update placeholder value.
 
 	// How the input data should be interpreted.
 	valueInputOption := "USER_ENTERED" // TODO: Update placeholder value.
@@ -147,21 +235,22 @@ func AppendToSpreadSheet(sheetsService *sheets.Service, ctx context.Context) {
 	insertDataOption := "OVERWRITE" // TODO: Update placeholder value.
 
 	test := [][]interface{}{}
-	// t := []string{"hello"}
-	test = append(test, []interface{}{"hello"})
+	test = append(test, []interface{}{"hello", "Hello2"})
 	fmt.Println(test)
 	rb := &sheets.ValueRange{
 		// TODO: Add desired fields of the request body.
 		MajorDimension: "COLUMNS",
-		Range:          "A5:A5",
+		Range:          "A5:B5",
 		Values:         test,
 	}
 
 	resp, err := sheetsService.Spreadsheets.Values.Append(spreadsheetId, range2, rb).ValueInputOption(valueInputOption).InsertDataOption(insertDataOption).Context(ctx).Do()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// TODO: Change code below to process the `resp` object:
 	fmt.Printf("%#v\n", resp)
+
+	return nil
 }
