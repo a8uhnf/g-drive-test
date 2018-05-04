@@ -10,7 +10,9 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/ghodss/yaml"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
@@ -156,36 +158,71 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to retrieve data from sheet. %v", err)
 	}
-	fmt.Println(len(resp.Values))
-	fmt.Println(resp.Values)
 	if len(resp.Values) > 0 {
 		fmt.Println("Name, Major:")
-		// for _, row := range resp.Values {
-		// 	// Print columns A and E, which correspond to indices 0 and 4.
-		// 	fmt.Printf("%s, %s\n", row[0], row[4])
-		// }
+		for _, row := range resp.Values {
+			// Print columns A and E, which correspond to indices 0 and 4.
+			// fmt.Printf("%s, %s\n", row[0])
+			if len(row) > 0 {
+				fmt.Println(row)
+			}
+		}
 	} else {
 		fmt.Print("No data found.")
 	}
-	err = AppendToSpreadSheet(ctx, srv)
+	/* err = AppendToSpreadSheet(ctx, srv)
+	if err != nil {
+		panic(err)
+	} */
+	err = DownloadWatcher()
 	if err != nil {
 		panic(err)
 	}
 }
 
+// DownloadWatcher watches download folder.
+func DownloadWatcher() error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer watcher.Close()
+
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case event := <-watcher.Events:
+				fmt.Println("-------------------")
+				log.Println("event operations:- ", event.Op)
+				log.Println("filename:- ", event.Name)
+				/* if event.Op&fsnotify.Write == fsnotify.Write {
+
+				} */
+				if strings.HasSuffix(event.Name, ".torrent") && event.Op&fsnotify.Chmod == fsnotify.Chmod {
+					fmt.Println("Hello Find the files.....")
+				}
+
+			case err := <-watcher.Errors:
+				log.Println("error:", err)
+			}
+		}
+	}()
+	path := filepath.Join(os.Getenv("HOME"), "Downloads")
+	if _, ok := os.Stat(path); ok != nil {
+		return ok
+	}
+	err = watcher.Add(path)
+	if err != nil {
+		return err
+	}
+	<-done
+	return nil
+}
+
 // AppendToSpreadSheet appends to spreadsheet.
 func AppendToSpreadSheet(ctx context.Context, sheetsService *sheets.Service) error {
-	p, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(p, ConfigFileName)
-	f, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	cfg := &Config{}
-	err = yaml.Unmarshal(f, cfg)
+	cfg, err := getConfig()
 	if err != nil {
 		return err
 	}
