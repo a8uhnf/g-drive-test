@@ -112,25 +112,20 @@ func getConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(string(y))
 	cfg := &Config{}
 	err = yaml.Unmarshal(y, cfg)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(cfg.SpreadsheetID)
-	fmt.Println(cfg.SheetName)
 	return cfg, nil
 }
 
 func main() {
 	ctx := context.Background()
-
-	b, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "Hanifa/credentials/google-spreadsheet/client_secret.json"))
+	b, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "credentials/google-spreadsheet/client_secret.json"))
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
-
 	// If modifying these scopes, delete your previously saved credentials
 	// at ~/.credentials/sheets.googleapis.com-go-quickstart.json
 	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets")
