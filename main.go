@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	filepath_x "github.com/a8uhnf/go-utility/filepath"
 	"github.com/fsnotify/fsnotify"
@@ -181,6 +182,7 @@ func DownloadWatcher(ctx context.Context) error {
 
 	done := make(chan bool)
 	go func() {
+		appender := &SpreadsheetAppender{}
 		for {
 			select {
 			case event := <-watcher.Events:
@@ -193,7 +195,7 @@ func DownloadWatcher(ctx context.Context) error {
 					if err != nil {
 						panic(err)
 					}
-					err = AppendSpreadSheet(ctx, svc, filepath_x.Filename(event.Name))
+					err = appender.AppendSpreadSheet(ctx, svc, filepath_x.Filename(event.Name))
 					if err != nil {
 						panic(err)
 					}
@@ -233,8 +235,6 @@ func GetSpreadsheetData(ctx context.Context) (*sheets.ValueRange, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(resp)
-
 	return resp, nil
 }
 
@@ -258,8 +258,15 @@ func getSpreadsheetService(ctx context.Context) (*sheets.Service, error) {
 	return srv, nil
 }
 
+// SpreadsheetAppender holds values for append to spreadsheet
+type SpreadsheetAppender struct {
+	lock sync.Mutex
+}
+
 // AppendSpreadSheet appends to spreadsheet.
-func AppendSpreadSheet(ctx context.Context, sheetsService *sheets.Service, name string) error {
+func (s *SpreadsheetAppender) AppendSpreadSheet(ctx context.Context, sheetsService *sheets.Service, name string) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	cfg, err := getConfig()
 	if err != nil {
 		return err
@@ -270,7 +277,6 @@ func AppendSpreadSheet(ctx context.Context, sheetsService *sheets.Service, name 
 	if err != nil {
 		return err
 	}
-	fmt.Println("-------------", len(l.Values))
 	// The A1 notation of a range to search for a logical table of data.
 	// Values will be appended after the last row of the table.
 	range2 := fmt.Sprintf("A%d:A%d", len(l.Values), len(l.Values)) // TODO: Update placeholder value.
@@ -285,8 +291,7 @@ func AppendSpreadSheet(ctx context.Context, sheetsService *sheets.Service, name 
 	test = append(test, []interface{}{name})
 	fmt.Println(test)
 	rb := &sheets.ValueRange{
-		// TODO: Add desired fields of the request body.
-		MajorDimension: "COLUMNS",
+		MajorDimension: "ROWS",
 		Range:          range2,
 		Values:         test,
 	}
