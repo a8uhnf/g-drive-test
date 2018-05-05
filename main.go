@@ -121,7 +121,7 @@ func getConfig() (*Config, error) {
 }
 
 func main() {
-	ctx := context.Background()
+	/* ctx := context.Background()
 	b, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "credentials/google-spreadsheet/client_secret.json"))
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
@@ -145,11 +145,9 @@ func main() {
 	}
 	// Prints the names and majors of students in a sample spreadsheet:
 	// https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
-	fmt.Println(cfg.SpreadsheetID)
-	fmt.Println(cfg.SheetName)
 	spreadsheetId := cfg.SpreadsheetID
-	readRange := cfg.SheetName + "!A1:A"
-	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
+	readRange := cfg.SheetName + "!A1:A" */
+	resp, err := GetSpreadsheetData() // srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve data from sheet. %v", err)
 	}
@@ -165,10 +163,6 @@ func main() {
 	} else {
 		fmt.Print("No data found.")
 	}
-	/* err = AppendToSpreadSheet(ctx, srv)
-	if err != nil {
-		panic(err)
-	} */
 	err = DownloadWatcher()
 	if err != nil {
 		panic(err)
@@ -215,8 +209,44 @@ func DownloadWatcher() error {
 	return nil
 }
 
-// AppendToSpreadSheet appends to spreadsheet.
-func AppendToSpreadSheet(ctx context.Context, sheetsService *sheets.Service) error {
+func GetSpreadsheetData() (*sheets.ValueRange, error) {
+	ctx := context.Background()
+	b, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "credentials/google-spreadsheet/client_secret.json"))
+	if err != nil {
+		return nil, err
+	}
+	// If modifying these scopes, delete your previously saved credentials
+	// at ~/.credentials/sheets.googleapis.com-go-quickstart.json
+	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets")
+	if err != nil {
+		return nil, err
+	}
+	client := getClient(ctx, config)
+
+	srv, err := sheets.New(client)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := getConfig()
+	if err != nil {
+		return nil, err
+	}
+	// Prints the names and majors of students in a sample spreadsheet:
+	// https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
+	spreadsheetId := cfg.SpreadsheetID
+	readRange := cfg.SheetName + "!A1:A"
+	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(resp)
+
+	return resp, nil
+}
+
+// AppendSpreadSheet appends to spreadsheet.
+func AppendSpreadSheet(ctx context.Context, sheetsService *sheets.Service) error {
 	cfg, err := getConfig()
 	if err != nil {
 		return err
