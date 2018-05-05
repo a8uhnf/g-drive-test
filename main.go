@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	filepath_x "github.com/a8uhnf/go-utility/filepath"
 	"github.com/fsnotify/fsnotify"
 	"github.com/ghodss/yaml"
 	"golang.org/x/net/context"
@@ -121,8 +122,8 @@ func getConfig() (*Config, error) {
 }
 
 func main() {
-	/* ctx := context.Background()
-	b, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "credentials/google-spreadsheet/client_secret.json"))
+	ctx := context.Background()
+	/*b, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "credentials/google-spreadsheet/client_secret.json"))
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
@@ -147,10 +148,11 @@ func main() {
 	// https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
 	spreadsheetId := cfg.SpreadsheetID
 	readRange := cfg.SheetName + "!A1:A" */
-	resp, err := GetSpreadsheetData() // srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
+	resp, err := GetSpreadsheetData(ctx) // srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve data from sheet. %v", err)
 	}
+	fmt.Println("------------------", len(resp.Values))
 	if len(resp.Values) > 0 {
 		fmt.Println("Name, Major:")
 		for _, row := range resp.Values {
@@ -163,14 +165,14 @@ func main() {
 	} else {
 		fmt.Print("No data found.")
 	}
-	err = DownloadWatcher()
+	err = DownloadWatcher(ctx)
 	if err != nil {
 		panic(err)
 	}
 }
 
 // DownloadWatcher watches download folder.
-func DownloadWatcher() error {
+func DownloadWatcher(ctx context.Context) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
@@ -185,11 +187,16 @@ func DownloadWatcher() error {
 				fmt.Println("-------------------")
 				log.Println("event operations:- ", event.Op)
 				log.Println("filename:- ", event.Name)
-				/* if event.Op&fsnotify.Write == fsnotify.Write {
-
-				} */
 				if strings.HasSuffix(event.Name, ".torrent") && event.Op&fsnotify.Chmod == fsnotify.Chmod {
 					fmt.Println("Hello Find the files.....")
+					svc, err := getSpreadsheetService(ctx)
+					if err != nil {
+						panic(err)
+					}
+					err = AppendSpreadSheet(ctx, svc, filepath_x.Filename(event.Name))
+					if err != nil {
+						panic(err)
+					}
 				}
 
 			case err := <-watcher.Errors:
@@ -209,25 +216,11 @@ func DownloadWatcher() error {
 	return nil
 }
 
-func GetSpreadsheetData() (*sheets.ValueRange, error) {
-	ctx := context.Background()
-	b, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "credentials/google-spreadsheet/client_secret.json"))
+func GetSpreadsheetData(ctx context.Context) (*sheets.ValueRange, error) {
+	srv, err := getSpreadsheetService(ctx)
 	if err != nil {
 		return nil, err
 	}
-	// If modifying these scopes, delete your previously saved credentials
-	// at ~/.credentials/sheets.googleapis.com-go-quickstart.json
-	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets")
-	if err != nil {
-		return nil, err
-	}
-	client := getClient(ctx, config)
-
-	srv, err := sheets.New(client)
-	if err != nil {
-		return nil, err
-	}
-
 	cfg, err := getConfig()
 	if err != nil {
 		return nil, err
@@ -245,19 +238,43 @@ func GetSpreadsheetData() (*sheets.ValueRange, error) {
 	return resp, nil
 }
 
+func getSpreadsheetService(ctx context.Context) (*sheets.Service, error) {
+	b, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "credentials/google-spreadsheet/client_secret.json"))
+	if err != nil {
+		return nil, err
+	}
+	// If modifying these scopes, delete your previously saved credentials
+	// at ~/.credentials/sheets.googleapis.com-go-quickstart.json
+	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets")
+	if err != nil {
+		return nil, err
+	}
+	client := getClient(ctx, config)
+
+	srv, err := sheets.New(client)
+	if err != nil {
+		return nil, err
+	}
+	return srv, nil
+}
+
 // AppendSpreadSheet appends to spreadsheet.
-func AppendSpreadSheet(ctx context.Context, sheetsService *sheets.Service) error {
+func AppendSpreadSheet(ctx context.Context, sheetsService *sheets.Service, name string) error {
 	cfg, err := getConfig()
 	if err != nil {
 		return err
 	}
 	// The ID of the spreadsheet to update.
 	spreadsheetId := cfg.SpreadsheetID // TODO: Update placeholder value.
-
+	l, err := GetSpreadsheetData(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Println("-------------", len(l.Values))
 	// The A1 notation of a range to search for a logical table of data.
 	// Values will be appended after the last row of the table.
-	range2 := "A5:B5" // TODO: Update placeholder value.
-
+	range2 := fmt.Sprintf("A%d:A%d", len(l.Values), len(l.Values)) // TODO: Update placeholder value.
+	fmt.Println("Range:= ", range2)
 	// How the input data should be interpreted.
 	valueInputOption := "USER_ENTERED" // TODO: Update placeholder value.
 
@@ -265,12 +282,12 @@ func AppendSpreadSheet(ctx context.Context, sheetsService *sheets.Service) error
 	insertDataOption := "OVERWRITE" // TODO: Update placeholder value.
 
 	test := [][]interface{}{}
-	test = append(test, []interface{}{"hello", "Hello2"})
+	test = append(test, []interface{}{name})
 	fmt.Println(test)
 	rb := &sheets.ValueRange{
 		// TODO: Add desired fields of the request body.
 		MajorDimension: "COLUMNS",
-		Range:          "A5:B5",
+		Range:          range2,
 		Values:         test,
 	}
 
